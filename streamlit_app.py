@@ -64,9 +64,12 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-        # Robust volatility: drop NaNs then std
-        sigma = window["close"].pct_change().dropna().std()
-        sigma = float(sigma) if not np.isnan(sigma) else 0.0
+        # Robust volatility calculation
+        sigma_val = window["close"].pct_change().dropna().std()
+        if pd.isna(sigma_val):
+            sigma = 0.0
+        else:
+            sigma = float(sigma_val)
 
         r_hat = q_out * sigma * risk
         pred_price = last_price * (1 + r_hat)
@@ -79,21 +82,22 @@ if st.checkbox("Show Price Prediction Chart"):
     chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
 
     # 6) Multi-Step Walk-Forward Forecast
-    # Prepare extended DataFrame and running price series
     ext_df = chart_df.copy()
     current_prices = df[["close"]].copy()
     freq = pd.infer_freq(df.index) or interval
 
     for step in range(1, N_steps + 1):
-        # Use the latest lookback bars
         window = current_prices.iloc[-lookback:]
         x = compute_raw_features(window)
         q_out = float(qnode(params, x))
         last_p = float(window["close"].iloc[-1])
 
-        # Volatility for forecast
-        sigma = window["close"].pct_change().dropna().std()
-        sigma = float(sigma) if not np.isnan(sigma) else 0.0
+        # Robust volatility for forecast
+        sigma_val = window["close"].pct_change().dropna().std()
+        if pd.isna(sigma_val):
+            sigma = 0.0
+        else:
+            sigma = float(sigma_val)
 
         r_hat = q_out * sigma * risk
         next_p = last_p * (1 + r_hat)
@@ -101,7 +105,6 @@ if st.checkbox("Show Price Prediction Chart"):
         # Compute next timestamp
         next_t = current_prices.index[-1] + pd.tseries.frequencies.to_offset(freq)
 
-        # Append to extended DF and current_prices for chaining
         ext_df.loc[next_t] = [np.nan, next_p]
         current_prices.loc[next_t] = next_p
 
