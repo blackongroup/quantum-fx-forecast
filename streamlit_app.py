@@ -1,31 +1,4 @@
 # streamlit_app.py
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-from backtest import run_backtest
-from forecast_and_trade import forecast_and_trade, PAIRS
-from data.fetch_candles import fetch_ohlcv
-from features import compute_raw_features
-from model.utils import load_params
-from model.qml import qnode
-
-# --- Page Config ---
-st.set_page_config(page_title="Quantum FX Forecast & Trading", layout="centered")
-st.title("🚀 Quantum FX Forecast & Trading")
-
-# --- Backtest & Trade Buttons ---
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Run Backtest"):
-        st.info("Running backtest, please wait…")
-        run_backtest()
-        st.success("Backtest complete. See logs for details.")
-with col2:
-    if st.button("Run Forecast & Trade"):
-        st.info("Executing forecast & trade stub…")
-        try:
-            forecast_and_trade()
             st.success("Forecast executed. Check logs for stub output.")
         except Exception as e:
             st.error(f"Error: {e}")
