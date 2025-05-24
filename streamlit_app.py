@@ -3,7 +3,9 @@
 import os
 import streamlit as st
 import pandas as pd
+import numpy as np
 import altair as alt
+from sklearn.preprocessing import StandardScaler
 
 from backtest import run_backtest
 from forecast_and_trade import forecast_and_trade, PAIRS
@@ -34,60 +36,76 @@ with col2:
 
 st.markdown("---")
 st.header("🔮 Price Prediction Chart")
-if st.checkbox("Show Price Prediction Chart"):
-    pair = st.selectbox("Select FX Pair", PAIRS)
-    days = st.slider("Days of data", 7, 90, 30)
-    interval = st.selectbox("Interval", ["1h", "4h", "1d"], index=0)
-    lookback = st.number_input("Lookback periods", min_value=1, max_value=168, value=24)
-    risk = st.slider("Risk multiplier", min_value=0.0, max_value=1.0, value=0.8)
 
+if st.checkbox("Show Price Prediction Chart"):
+    # 1) UI controls
+    pair     = st.selectbox( "Select FX Pair", PAIRS )
+    days     = st.slider(      "Days of data",   7, 90, 30 )
+    interval = st.selectbox(   "Interval",       ["1h","4h","1d"], index=0 )
+    lookback = st.number_input("Lookback periods", 1, 168, 24)
+    risk     = st.slider(      "Risk multiplier", 0.0, 1.0, 0.8)
+
+    # 2) Fetch data
     df = fetch_ohlcv(pair, period=f"{days}d", interval=interval)
     if df.empty:
         st.error(f"No data for {pair}.")
-    else:
-        st.subheader(f"Actual Close Price for {pair}")
-        st.line_chart(df["close"])
+        st.stop()
 
-        # Load model and scaler
-        params = load_params()
-        try:
-            scaler = load_scaler()
-        except FileNotFoundError:
-            st.warning("No scaler found; using raw features.")
-            scaler = None
+    st.subheader(f"Actual Close Price for {pair}")
+    st.line_chart(df["close"])
 
-        times, actuals, preds = [], [], []
-        for t in range(lookback, len(df) - 1):
-            window = df.iloc[t - lookback : t + 1]
-            if scaler:
-                x = compute_features(window, scaler)
-            else:
-                x = compute_raw_features(window)
-            q_out = float(qnode(params, x))
-            last_price = float(window["close"].iloc[-1])
-            sigma = window["close"].pct_change().std()
-            r_hat = q_out * sigma * risk
-            pred_price = last_price * (1 + r_hat)
+    # 3) Load or initialize model params
+    params = load_params()
 
-            times.append(df.index[t + 1])
-            actuals.append(float(df["close"].iloc[t + 1]))
-            preds.append(pred_price)
+    # 4) Attempt to load scaler; if missing, build one on the fly
+    try:
+        scaler = load_scaler()
+    except FileNotFoundError:
+        st.info("No saved scaler found — fitting scaler on the fly for your chart.")
+        # Build feature matrix over all windows
+        X_raw = []
+        for t in range(lookback, len(df)-1):
+            window = df.iloc[t-lookback : t+1]
+            X_raw.append(compute_raw_features(window))
+        X_raw = np.vstack(X_raw)
+        scaler = StandardScaler().fit(X_raw)
 
-        # Build DataFrame for Altair
-        chart_data = pd.DataFrame({
-            "time": times,
-            "Actual": actuals,
-            "Predicted": preds
-        })
-        melted = chart_data.melt(id_vars=["time"], var_name="Type", value_name="Price")
+    # 5) Generate actual vs predicted series
+    times, actuals, preds = [], [], []
+    for t in range(lookback, len(df)-1):
+        window = df.iloc[t-lookback : t+1]
+        # Compute (and scale) features
+        x = compute_features(window, scaler)
+        q_out = float(qnode(params, x))
+        last_price = float(window["close"].iloc[-1])
+        sigma = window["close"].pct_change().std()
+        r_hat = q_out * sigma * risk
+        pred_price = last_price * (1 + r_hat)
 
-        chart = alt.Chart(melted).mark_line().encode(
+        times.append(df.index[t+1])
+        actuals.append(float(df["close"].iloc[t+1]))
+        preds.append(pred_price)
+
+    # 6) Create tidy DataFrame for Altair
+    chart_df = pd.DataFrame({
+        "time": times,
+        "Actual": actuals,
+        "Predicted": preds
+    })
+    melted = chart_df.melt(id_vars=["time"], var_name="Series", value_name="Price")
+
+    # 7) Plot with Altair
+    chart = (
+        alt.Chart(melted)
+        .mark_line()
+        .encode(
             x=alt.X("time:T", title="Time"),
             y=alt.Y("Price:Q", title="Price"),
-            color=alt.Color("Type:N")
-        ).properties(
-            width=700,
-            height=400,
-            title=f"{pair} Actual vs QML-Predicted Next-Close"
+            color=alt.Color("Series:N")
         )
-        st.altair_chart(chart, use_container_width=True)
+        .properties(
+            width=700, height=400,
+            title=f"{pair}: Actual vs QML-Predicted Next-Close"
+        )
+    )
+    st.altair_chart(chart, use_container_width=True)
