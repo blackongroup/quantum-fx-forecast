@@ -1,23 +1,16 @@
 # executor_fx.py
 
 import os
-from oandapyV20 import API
-from oandapyV20.endpoints.orders import OrderCreate
 
-CLIENT = API(access_token=os.getenv("OANDA_TOKEN"))
-ACCOUNT = os.getenv("OANDA_ACCOUNT")
+# Stub executor: prints allocations instead of placing real trades
+# Once OANDA is approved and oandapyV20 is available, replace this stub with real API calls.
 
 def execute(allocs: dict, prices: dict):
-    total = sum(prices.values())
-    for p, w in allocs.items():
-        notional = total * w
-        units = int(notional / prices[p])
-        order = {
-            "order": {
-                "instrument": p,
-                "units": str(units),
-                "type": "MARKET",
-                "positionFill": "REDUCE_ONLY"
-            }
-        }
-        CLIENT.request(OrderCreate(ACCOUNT, data=order))
+    """
+    Stub execution function. Prints allocations and prices.
+    Replace with broker API logic when ready.
+    """
+    print("--- Executing Trades Stub ---")
+    for instrument, weight in allocs.items():
+        price = prices.get(instrument)
+        print(f"Instrument: {instrument}, Weight: {weight:.2%}, Price: {price}")
