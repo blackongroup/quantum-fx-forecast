@@ -46,17 +46,16 @@ if st.checkbox("Show Price Prediction Chart"):
 
     # Fetch data
     df = fetch_ohlcv(pair, period=f"{days}d", interval=interval)
-    if df.empty:
+        if df.empty:
         st.error(f"No data for {pair}.")
         st.stop()
 
+    # Plot raw close price
     st.subheader(f"Actual Close Price for {pair}")
     st.line_chart(df["close"])
 
-    # Load model params
-    params = load_params()
-
     # Prediction loop
+
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
