@@ -88,19 +88,7 @@ if st.checkbox("Show Price Prediction Chart"):
     })
     melted = chart_df.melt(id_vars=["time"], var_name="Series", value_name="Price")
 
-    # Plot with Altair
-    chart = (
-        alt.Chart(melted)
-        .mark_line()
-        .encode(
-            x=alt.X("time:T", title="Time"),
-            y=alt.Y("Price:Q", title="Price"),
-            color=alt.Color("Series:N")
-        )
-        .properties(
-            width=700,
-            height=400,
-            title=f"{pair}: Actual vs QML-Predicted Next-Close"
-        )
-    )
-    st.altair_chart(chart, use_container_width=True)
+            # Plot with Streamlit line_chart for both series
+        chart_df2 = chart_df.set_index("time")
+        st.subheader("Actual vs. QML-Predicted Next-Close")
+        st.line_chart(chart_df2)
