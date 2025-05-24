@@ -62,7 +62,11 @@ if st.checkbox("Show Price Prediction Chart"):
         x = compute_raw_features(window)
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
-        sigma = window["close"].pct_change().std() or 0.0
+
+        # Safe volatility calculation
+        sigma = window["close"].pct_change().std()
+        sigma = float(sigma) if not np.isnan(sigma) else 0.0
+
         r_hat = q_out * sigma * risk
         pred_price = last_price * (1 + r_hat)
 
@@ -94,4 +98,3 @@ if st.checkbox("Show Price Prediction Chart"):
         )
     )
     st.altair_chart(chart, use_container_width=True)
-
