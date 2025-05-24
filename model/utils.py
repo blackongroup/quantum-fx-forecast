@@ -1,31 +1,33 @@
-# model/utils.py
-
 import json
-import numpy as np
 import os
+import joblib
+import numpy as np
+from sklearn.preprocessing import StandardScaler
 
-PARAMS_FILE_DEFAULT = "model/params.json"
+PARAMS_PATH = "model/params.json"
+SCALER_PATH = "model/scaler.pkl"
 
-
-def save_params(params: np.ndarray, filename: str = PARAMS_FILE_DEFAULT):
-    # Ensure directory exists
+def save_params(params: np.ndarray, filename: str = PARAMS_PATH):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, "w") as f:
         json.dump(params.tolist(), f)
 
-
-def load_params(filename: str = PARAMS_FILE_DEFAULT) -> np.ndarray:
-    """
-    Load model parameters from JSON file. If file not found,
-    generate random params, save them, and return.
-    """
+def load_params(filename: str = PARAMS_PATH) -> np.ndarray:
+    # if missing, create random defaults
     if not os.path.exists(filename):
-        # Generate default random parameters
         from model.qml import n_qubits
-        params = np.random.randn(n_qubits)
-        save_params(params, filename)
-        return params
-    # Load existing parameters
-    with open(filename, "r") as f:
-        data = json.load(f)
-    return np.array(data)
+        p = np.random.randn(n_qubits)
+        save_params(p, filename)
+        return p
+    with open(filename) as f:
+        return np.array(json.load(f))
+
+def save_scaler(scaler: StandardScaler, filename: str = SCALER_PATH):
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    joblib.dump(scaler, filename)
+
+def load_scaler(filename: str = SCALER_PATH) -> StandardScaler:
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"No scaler at {filename}; run training first.")
+    return joblib.load(filename)
+
