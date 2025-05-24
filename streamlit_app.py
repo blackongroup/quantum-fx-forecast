@@ -62,11 +62,16 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-        # Volatility
-        sigma_val = window["close"].pct_change().std()
-        sigma = float(sigma_val) if not pd.isna(sigma_val) else 0.0
+                # Volatility (robust check)
+        try:
+            sigma_val = window["close"].pct_change().std()
+            sigma = float(sigma_val)
+            if np.isnan(sigma):
+                sigma = 0.0
+        except Exception:
+            sigma = 0.0
 
-        r_hat = q_out * sigma * risk
+        r_hat = q_out * sigma * risk * sigma * risk
         pred_price = last_price * (1 + r_hat)
 
         times.append(df.index[t + 1])
