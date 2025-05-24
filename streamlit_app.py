@@ -3,9 +3,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import altair as alt
-import math
-
 from backtest import run_backtest
 from forecast_and_trade import forecast_and_trade, PAIRS
 from data.fetch_candles import fetch_ohlcv
@@ -46,7 +43,7 @@ if st.checkbox("Show Price Prediction Chart"):
 
     # Fetch data
     df = fetch_ohlcv(pair, period=f"{days}d", interval=interval)
-        if df.empty:
+    if df.empty:
         st.error(f"No data for {pair}.")
         st.stop()
 
@@ -54,8 +51,10 @@ if st.checkbox("Show Price Prediction Chart"):
     st.subheader(f"Actual Close Price for {pair}")
     st.line_chart(df["close"])
 
-    # Prediction loop
+    # Load model parameters
+    params = load_params()
 
+    # Compute predictions
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
@@ -63,14 +62,9 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-        # Robust volatility
-        try:
-            sigma_val = window["close"].pct_change().std()
-            sigma = float(sigma_val)
-            if math.isnan(sigma):
-                sigma = 0.0
-        except Exception:
-            sigma = 0.0
+        # Volatility
+        sigma_val = window["close"].pct_change().std()
+        sigma = float(sigma_val) if not pd.isna(sigma_val) else 0.0
 
         r_hat = q_out * sigma * risk
         pred_price = last_price * (1 + r_hat)
@@ -79,7 +73,7 @@ if st.checkbox("Show Price Prediction Chart"):
         actuals.append(float(df["close"].iloc[t + 1]))
         preds.append(pred_price)
 
-            # Build DataFrame for chart
+    # Prepare DataFrame for plotting
     chart_df2 = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
     st.subheader("Actual vs. QML-Predicted Next-Close")
     st.line_chart(chart_df2)
