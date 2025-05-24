@@ -3,6 +3,7 @@
 import os
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 from backtest import run_backtest
 from forecast_and_trade import forecast_and_trade, PAIRS
@@ -21,7 +22,7 @@ with col1:
     if st.button("Run Backtest"):
         st.info("Running backtest, please wait…")
         run_backtest()
-        st.success("Backtest complete! Check your server logs for details.")
+        st.success("Backtest complete. See logs for details.")
 with col2:
     if st.button("Run Forecast & Trade"):
         st.info("Executing forecast & trade stub…")
@@ -29,7 +30,7 @@ with col2:
             forecast_and_trade()
             st.success("Forecast executed. Check logs for stub output.")
         except Exception as e:
-            st.error(f"Error during execution: {e}")
+            st.error(f"Error: {e}")
 
 st.markdown("---")
 st.header("🔮 Price Prediction Chart")
@@ -47,11 +48,12 @@ if st.checkbox("Show Price Prediction Chart"):
         st.subheader(f"Actual Close Price for {pair}")
         st.line_chart(df["close"])
 
+        # Load model and scaler
         params = load_params()
         try:
             scaler = load_scaler()
         except FileNotFoundError:
-            st.warning("No scaler found; please run training (model/train_qml.py) to generate scaler. Using raw features fallback.")
+            st.warning("No scaler found; using raw features.")
             scaler = None
 
         times, actuals, preds = [], [], []
@@ -71,6 +73,21 @@ if st.checkbox("Show Price Prediction Chart"):
             actuals.append(float(df["close"].iloc[t + 1]))
             preds.append(pred_price)
 
-        chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
-        st.subheader("Actual vs. QML-Predicted Next-Close")
-        st.line_chart(chart_df)
+        # Build DataFrame for Altair
+        chart_data = pd.DataFrame({
+            "time": times,
+            "Actual": actuals,
+            "Predicted": preds
+        })
+        melted = chart_data.melt(id_vars=["time"], var_name="Type", value_name="Price")
+
+        chart = alt.Chart(melted).mark_line().encode(
+            x=alt.X("time:T", title="Time"),
+            y=alt.Y("Price:Q", title="Price"),
+            color=alt.Color("Type:N")
+        ).properties(
+            width=700,
+            height=400,
+            title=f"{pair} Actual vs QML-Predicted Next-Close"
+        )
+        st.altair_chart(chart, use_container_width=True)
