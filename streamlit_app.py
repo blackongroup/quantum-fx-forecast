@@ -80,7 +80,7 @@ if st.checkbox("Show Price Prediction Chart"):
         actuals.append(float(df["close"].iloc[t + 1]))
         preds.append(pred_price)
 
-        # Build DataFrame for chart
-    chart_df2 = chart_df.set_index("time")
+            # Build DataFrame for chart
+    chart_df2 = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
     st.subheader("Actual vs. QML-Predicted Next-Close")
     st.line_chart(chart_df2)
