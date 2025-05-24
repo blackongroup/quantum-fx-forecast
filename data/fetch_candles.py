@@ -16,4 +16,3 @@ def fetch_ohlcv(pair: str, period: str = "365d", interval: str = "1h") -> pd.Dat
         raise ValueError(f"No data for {pair} via yfinance")
     df = df.rename(columns={"Close": "close"})
     return df[["close"]]
-
