@@ -54,13 +54,15 @@ if show_chart:
         for t in range(lookback, len(df) - 1):
             window = df.iloc[t - lookback : t + 1]
             x = compute_features(window)
-            q_out = qnode(params, x)
-            actual_price = df["close"].iloc[t + 1]
-            predicted_price = df["close"].iloc[t] * (1 + q_out)
+            # Ensure qnode output is a Python float
+            q_out = float(qnode(params, x))
+            actual_price = float(df["close"].iloc[t + 1])
+            predicted_price = float(df["close"].iloc[t] * (1 + q_out))
             times.append(df.index[t + 1])
             actuals.append(actual_price)
             preds.append(predicted_price)
 
+        # Prepare DataFrame for charting
         chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
         st.subheader("Actual vs. QML-Predicted Next-Close")
         st.line_chart(chart_df)
