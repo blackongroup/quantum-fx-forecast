@@ -56,7 +56,7 @@ if st.checkbox("Show Price Prediction Chart"):
     # 4) Load QML Model Parameters
     params = load_params()
 
-    # 5) One-Step Next-Close Predictions
+        # 5) One-Step Next-Close Predictions
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
@@ -64,12 +64,11 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-        # Robust volatility calculation
-        sigma_val = window["close"].pct_change().dropna().std()
-        if pd.isna(sigma_val):
+        # robust volatility calculation
+        try:
+            sigma = float(window["close"].pct_change().dropna().std())
+        except Exception:
             sigma = 0.0
-        else:
-            sigma = float(sigma_val)
 
         r_hat = q_out * sigma * risk
         pred_price = last_price * (1 + r_hat)
@@ -79,6 +78,7 @@ if st.checkbox("Show Price Prediction Chart"):
         preds.append(pred_price)
 
     # Base DataFrame of one-step predictions
+    chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
     chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
 
     # 6) Multi-Step Walk-Forward Forecast
