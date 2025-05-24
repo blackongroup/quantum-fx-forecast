@@ -4,5 +4,5 @@ scikit-learn
 streamlit
 pennylane
 pennylane-qiskit
-oandapyV20
+yfinance
 python-telegram-bot
