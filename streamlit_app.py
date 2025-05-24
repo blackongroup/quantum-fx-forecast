@@ -56,7 +56,7 @@ if st.checkbox("Show Price Prediction Chart"):
     # 4) Load QML Model Parameters
     params = load_params()
 
-        # 5) One-Step Next-Close Predictions
+    # 5) One-Step Next-Close Predictions
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
@@ -65,8 +65,9 @@ if st.checkbox("Show Price Prediction Chart"):
         last_price = float(window["close"].iloc[-1])
 
         # robust volatility calculation
+        vol_series = window["close"].pct_change().dropna()
         try:
-            sigma = float(window["close"].pct_change().dropna().std())
+            sigma = float(vol_series.std())
         except Exception:
             sigma = 0.0
 
@@ -79,32 +80,28 @@ if st.checkbox("Show Price Prediction Chart"):
 
     # Base DataFrame of one-step predictions
     chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
-    chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
 
     # 6) Multi-Step Walk-Forward Forecast
     ext_df = chart_df.copy()
     current_prices = df[["close"]].copy()
     freq = pd.infer_freq(df.index) or interval
 
-    for step in range(1, N_steps + 1):
+    for _ in range(N_steps):
         window = current_prices.iloc[-lookback:]
         x = compute_raw_features(window)
         q_out = float(qnode(params, x))
         last_p = float(window["close"].iloc[-1])
 
-        # Robust volatility for forecast
-        sigma_val = window["close"].pct_change().dropna().std()
-        if pd.isna(sigma_val):
+        vol_series = window["close"].pct_change().dropna()
+        try:
+            sigma = float(vol_series.std())
+        except Exception:
             sigma = 0.0
-        else:
-            sigma = float(sigma_val)
 
         r_hat = q_out * sigma * risk
         next_p = last_p * (1 + r_hat)
 
-        # Compute next timestamp
         next_t = current_prices.index[-1] + pd.tseries.frequencies.to_offset(freq)
-
         ext_df.loc[next_t] = [np.nan, next_p]
         current_prices.loc[next_t] = next_p
 
