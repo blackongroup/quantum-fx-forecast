@@ -1,61 +1,5 @@
-# streamlit_app.py
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-import altair as alt
-
-from backtest import run_backtest
-from forecast_and_trade import forecast_and_trade, PAIRS
-from data.fetch_candles import fetch_ohlcv
-from features import compute_raw_features
-from model.utils import load_params
-from model.qml import qnode
-
-# --- Page Config ---
-st.set_page_config(page_title="Quantum FX Forecast & Trading", layout="centered")
-st.title("🚀 Quantum FX Forecast & Trading")
-
-# --- Backtest & Trade Buttons ---
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Run Backtest"):
-        st.info("Running backtest, please wait…")
-        run_backtest()
-        st.success("Backtest complete. See logs for details.")
-with col2:
-    if st.button("Run Forecast & Trade"):
-        st.info("Executing forecast & trade stub…")
-        try:
-            forecast_and_trade()
-            st.success("Forecast executed. Check logs for stub output.")
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-st.markdown("---")
-st.header("🔮 Price Prediction Chart")
-
-if st.checkbox("Show Price Prediction Chart"):
-    # 1) UI controls
-    pair     = st.selectbox("Select FX Pair", PAIRS)
-    days     = st.slider("Days of data", 7, 90, 30)
-    interval = st.selectbox("Interval", ["1h", "4h", "1d"], 0)
-    lookback = st.number_input("Lookback periods", 1, 168, 24)
-    risk     = st.slider("Risk multiplier", 0.0, 1.0, 0.8)
-
-    # 2) Fetch data
-    df = fetch_ohlcv(pair, period=f"{days}d", interval=interval)
-    if df.empty:
-        st.error(f"No data for {pair}.")
-        st.stop()
-
-    st.subheader(f"Actual Close Price for {pair}")
-    st.line_chart(df["close"])
-
-    # 3) Load model params
-    params = load_params()
-
     # 4) Compute actual vs predicted using raw features
+    import math
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
@@ -63,9 +7,14 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-        # Safe volatility calculation
-        sigma = window["close"].pct_change().std()
-        sigma = float(sigma) if not np.isnan(sigma) else 0.0
+        # Robust volatility calculation
+        try:
+            sigma_val = window["close"].pct_change().std()
+            sigma = float(sigma_val)
+            if math.isnan(sigma):
+                sigma = 0.0
+        except Exception:
+            sigma = 0.0
 
         r_hat = q_out * sigma * risk
         pred_price = last_price * (1 + r_hat)
@@ -81,20 +30,3 @@ if st.checkbox("Show Price Prediction Chart"):
         "Predicted": preds
     })
     melted = chart_df.melt(id_vars=["time"], var_name="Series", value_name="Price")
-
-    # 6) Plot with Altair
-    chart = (
-        alt.Chart(melted)
-        .mark_line()
-        .encode(
-            x="time:T",
-            y="Price:Q",
-            color="Series:N"
-        )
-        .properties(
-            width=700,
-            height=400,
-            title=f"{pair}: Actual vs QML-Predicted Next-Close"
-        )
-    )
-    st.altair_chart(chart, use_container_width=True)
