@@ -6,3 +6,5 @@ pennylane
 pennylane-qiskit
 yfinance
 python-telegram-bot
+joblib
+scikit-learn
