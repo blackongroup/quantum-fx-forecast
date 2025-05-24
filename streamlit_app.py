@@ -11,17 +11,17 @@ from features import compute_raw_features
 from model.utils import load_params
 from model.qml import qnode
 
-# --- Page Config ---
+# --- Page Configuration ---
 st.set_page_config(page_title="Quantum FX Forecast & Trading", layout="centered")
 st.title("🚀 Quantum FX Forecast & Trading")
 
-# --- Backtest & Trade Buttons ---
+# --- Backtest & Trade Controls ---
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Run Backtest"):
         st.info("Running backtest, please wait…")
         run_backtest()
-        st.success("Backtest complete. See logs for details.")
+        st.success("Backtest complete. Check logs for details.")
 with col2:
     if st.button("Run Forecast & Trade"):
         st.info("Executing forecast & trade stub…")
@@ -32,30 +32,31 @@ with col2:
             st.error(f"Error: {e}")
 
 st.markdown("---")
-st.header("🔮 Price Prediction Chart")
+st.header("🔮 Price Prediction & Multi-Day Forecast")
 
 if st.checkbox("Show Price Prediction Chart"):
-    # UI controls
-    pair = st.selectbox("Select FX Pair", PAIRS)
-    days = st.slider("Days of data", min_value=7, max_value=365, value=365)
-    interval = st.selectbox("Interval", ["1h", "4h", "1d"], index=0)
-    lookback = st.number_input("Lookback periods", min_value=1, max_value=168, value=24)
-    risk = st.slider("Risk multiplier", min_value=0.0, max_value=1.0, value=0.8)
+    # 1) User Controls
+    pair     = st.selectbox("Select FX Pair", PAIRS)
+    days     = st.slider("Days of data to load", min_value=7, max_value=365, value=365)
+    interval = st.selectbox("Data Interval", ["1h","4h","1d"], index=0)
+    lookback = st.number_input("Lookback periods (bars)", min_value=1, max_value=168, value=24)
+    risk     = st.slider("Risk multiplier", min_value=0.0, max_value=1.0, value=0.8)
+    N_steps  = st.number_input("Forecast horizon (# steps ahead)", min_value=1, max_value=30, value=7)
 
-    # Fetch data
+    # 2) Fetch Data
     df = fetch_ohlcv(pair, period=f"{days}d", interval=interval)
     if df.empty:
         st.error(f"No data for {pair}.")
         st.stop()
 
-    # 1) Plot raw close price
-    st.subheader(f"Actual Close Price for {pair} ({days} days)")
+    # 3) Historical Close Price Chart
+    st.subheader(f"Historical Close Price ({pair}) - Last {days} days")
     st.line_chart(df["close"])
 
-    # 2) Load model parameters
+    # 4) Load QML Model Parameters
     params = load_params()
 
-    # 3) Compute actual vs predicted Next-Close
+    # 5) One-Step Next-Close Predictions
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
@@ -63,11 +64,9 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-        # robust volatility calculation
-        try:
-            sigma = float(window["close"].pct_change().dropna().std())
-        except Exception:
-            sigma = 0.0
+        # Robust volatility: drop NaNs then std
+        sigma = window["close"].pct_change().dropna().std()
+        sigma = float(sigma) if not np.isnan(sigma) else 0.0
 
         r_hat = q_out * sigma * risk
         pred_price = last_price * (1 + r_hat)
@@ -76,31 +75,36 @@ if st.checkbox("Show Price Prediction Chart"):
         actuals.append(float(df["close"].iloc[t + 1]))
         preds.append(pred_price)
 
+    # Base DataFrame of one-step predictions
     chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
 
-    # 4) Compute one-step future forecast
-    last_window = df.iloc[-lookback:]
-    x_last = compute_raw_features(last_window)
-    q_last = float(qnode(params, x_last))
-    last_price = float(last_window["close"].iloc[-1])
-    try:
-        sigma_last = float(last_window["close"].pct_change().dropna().std())
-    except Exception:
-        sigma_last = 0.0
-    r_future = q_last * sigma_last * risk
-    future_price = last_price * (1 + r_future)
-
-    # infer future timestamp
+    # 6) Multi-Step Walk-Forward Forecast
+    # Prepare extended DataFrame and running price series
+    ext_df = chart_df.copy()
+    current_prices = df[["close"]].copy()
     freq = pd.infer_freq(df.index) or interval
-    future_time = df.index[-1] + pd.tseries.frequencies.to_offset(freq)
 
-    # append future point
-    future_row = pd.DataFrame(
-        {"Actual": [np.nan], "Predicted": [future_price]},
-        index=[future_time]
-    )
-    chart_ext = pd.concat([chart_df, future_row])
+    for step in range(1, N_steps + 1):
+        # Use the latest lookback bars
+        window = current_prices.iloc[-lookback:]
+        x = compute_raw_features(window)
+        q_out = float(qnode(params, x))
+        last_p = float(window["close"].iloc[-1])
 
-    # 5) Plot extended series
-    st.subheader("Actual vs. QML-Predicted Next-Close (with Future Forecast)")
-    st.line_chart(chart_ext)
+        # Volatility for forecast
+        sigma = window["close"].pct_change().dropna().std()
+        sigma = float(sigma) if not np.isnan(sigma) else 0.0
+
+        r_hat = q_out * sigma * risk
+        next_p = last_p * (1 + r_hat)
+
+        # Compute next timestamp
+        next_t = current_prices.index[-1] + pd.tseries.frequencies.to_offset(freq)
+
+        # Append to extended DF and current_prices for chaining
+        ext_df.loc[next_t] = [np.nan, next_p]
+        current_prices.loc[next_t] = next_p
+
+    # 7) Plot Predictions & Forecast
+    st.subheader(f"Actual vs. QML-Predicted Next-Close + {N_steps}-Step Forecast")
+    st.line_chart(ext_df)
