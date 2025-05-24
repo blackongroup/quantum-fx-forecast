@@ -1,0 +1,8 @@
+pandas
+numpy
+scikit-learn
+streamlit
+pennylane
+pennylane-qiskit
+oandapyV20
+python-telegram-bot
