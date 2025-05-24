@@ -3,8 +3,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import altair as alt
-
 from backtest import run_backtest
 from forecast_and_trade import forecast_and_trade, PAIRS
 from data.fetch_candles import fetch_ohlcv
@@ -37,11 +35,11 @@ st.header("🔮 Price Prediction Chart")
 
 if st.checkbox("Show Price Prediction Chart"):
     # UI controls
-    pair     = st.selectbox("Select FX Pair", PAIRS)
-    days     = st.slider("Days of data", 7, 365, 365)
+    pair = st.selectbox("Select FX Pair", PAIRS)
+    days = st.slider("Days of data", 7, 90, 30)
     interval = st.selectbox("Interval", ["1h", "4h", "1d"], index=0)
     lookback = st.number_input("Lookback periods", min_value=1, max_value=168, value=24)
-    risk     = st.slider("Risk multiplier", 0.0, 1.0, 0.8)
+    risk = st.slider("Risk multiplier", min_value=0.0, max_value=1.0, value=0.8)
 
     # Fetch data
     df = fetch_ohlcv(pair, period=f"{days}d", interval=interval)
@@ -49,14 +47,14 @@ if st.checkbox("Show Price Prediction Chart"):
         st.error(f"No data for {pair}.")
         st.stop()
 
-    # 1) Plot raw close price
-    st.subheader(f"Actual Close Price for {pair} ({days} days)")
+    # Plot raw close price
+    st.subheader(f"Actual Close Price for {pair}")
     st.line_chart(df["close"])
 
-    # 2) Load model parameters
+    # Load model parameters
     params = load_params()
 
-    # 3) Compute actual vs predicted Next-Close
+    # Compute predictions
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
@@ -64,40 +62,23 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-        # volatility
-        sigma_val = window["close"].pct_change().std()
-        sigma = float(sigma_val) if not np.isnan(sigma_val) else 0.0
+                # Volatility (robust check)
+        try:
+            sigma_val = window["close"].pct_change().std()
+            sigma = float(sigma_val)
+            if np.isnan(sigma):
+                sigma = 0.0
+        except Exception:
+            sigma = 0.0
 
-        r_hat = q_out * sigma * risk
+        r_hat = q_out * sigma * risk * sigma * risk
         pred_price = last_price * (1 + r_hat)
 
         times.append(df.index[t + 1])
         actuals.append(float(df["close"].iloc[t + 1]))
         preds.append(pred_price)
 
-    chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
-
-    # 4) Compute one-step future forecast beyond last timestamp
-    last_window = df.iloc[-lookback:]
-    x_last = compute_raw_features(last_window)
-    q_last = float(qnode(params, x_last))
-    last_price = float(last_window["close"].iloc[-1])
-    sigma_last = last_window["close"].pct_change().std()
-    sigma_last = float(sigma_last) if not np.isnan(sigma_last) else 0.0
-    r_future = q_last * sigma_last * risk
-    future_price = last_price * (1 + r_future)
-
-    # infer frequency and future timestamp
-    freq = pd.infer_freq(df.index) or interval
-    future_time = df.index[-1] + pd.tseries.frequencies.to_offset(freq)
-
-    # append future point
-    future_row = pd.DataFrame(
-        {"Actual": [np.nan], "Predicted": [future_price]},
-        index=[future_time]
-    )
-    chart_ext = pd.concat([chart_df, future_row])
-
-    # 5) Plot extended series
-    st.subheader("Actual vs. QML-Predicted Next-Close (with Future Forecast)")
-    st.line_chart(chart_ext)
+    # Prepare DataFrame for plotting
+    chart_df2 = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
+    st.subheader("Actual vs. QML-Predicted Next-Close")
+    st.line_chart(chart_df2)
