@@ -35,11 +35,11 @@ st.header("🔮 Price Prediction Chart")
 
 if st.checkbox("Show Price Prediction Chart"):
     # UI controls
-    pair = st.selectbox("Select FX Pair", PAIRS)
-    days = st.slider("Days of data", 7, 90, 30)
+    pair     = st.selectbox("Select FX Pair", PAIRS)
+    days     = st.slider("Days of data", min_value=7, max_value=365, value=365)
     interval = st.selectbox("Interval", ["1h", "4h", "1d"], index=0)
     lookback = st.number_input("Lookback periods", min_value=1, max_value=168, value=24)
-    risk = st.slider("Risk multiplier", min_value=0.0, max_value=1.0, value=0.8)
+    risk     = st.slider("Risk multiplier", min_value=0.0, max_value=1.0, value=0.8)
 
     # Fetch data
     df = fetch_ohlcv(pair, period=f"{days}d", interval=interval)
@@ -48,13 +48,13 @@ if st.checkbox("Show Price Prediction Chart"):
         st.stop()
 
     # Plot raw close price
-    st.subheader(f"Actual Close Price for {pair}")
+    st.subheader(f"Actual Close Price for {pair} ({days} days)")
     st.line_chart(df["close"])
 
     # Load model parameters
     params = load_params()
 
-    # Compute predictions
+    # Compute actual vs predicted using raw features
     times, actuals, preds = [], [], []
     for t in range(lookback, len(df) - 1):
         window = df.iloc[t - lookback : t + 1]
@@ -62,7 +62,7 @@ if st.checkbox("Show Price Prediction Chart"):
         q_out = float(qnode(params, x))
         last_price = float(window["close"].iloc[-1])
 
-                # Volatility (robust check)
+        # Volatility (robust check)
         try:
             sigma_val = window["close"].pct_change().std()
             sigma = float(sigma_val)
@@ -71,7 +71,7 @@ if st.checkbox("Show Price Prediction Chart"):
         except Exception:
             sigma = 0.0
 
-        r_hat = q_out * sigma * risk * sigma * risk
+        r_hat = q_out * sigma * risk
         pred_price = last_price * (1 + r_hat)
 
         times.append(df.index[t + 1])
@@ -79,6 +79,8 @@ if st.checkbox("Show Price Prediction Chart"):
         preds.append(pred_price)
 
     # Prepare DataFrame for plotting
-    chart_df2 = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
+    chart_df = pd.DataFrame({"Actual": actuals, "Predicted": preds}, index=times)
+
+    # Plot Actual vs Predicted
     st.subheader("Actual vs. QML-Predicted Next-Close")
-    st.line_chart(chart_df2)
+    st.line_chart(chart_df)
